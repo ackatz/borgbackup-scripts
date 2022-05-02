@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+
+## Remote Backup Script for Borg Backup
+
+export BORG_REMOTE_PATH=/usr/local/bin/borg1/borg1
+export BORG_REPO='<remoteuser>.rsync.net:borg'
+export BORG_PASSPHRASE='<passphrase>'
+export SENDGRID_API_KEY='<apikey>'
+LOG_NAME="remote-backup.log"
+LOG_PATH=/var/log/borg-backup/remote
+
+# borg create ... ::<snapshot-name> <backup-source>
+
+if borg create --progress --stats --remote-path=borg1 <remoteuser>.rsync.net:borg::$(hostname)-$(date +"%d-%b-%Y") /files >> /$LOG_PATH/$LOG_NAME 2>&1 ; then
+
+  curl --request POST \
+    --url https://api.sendgrid.com/v3/mail/send \
+    --header "Authorization: Bearer $SENDGRID_API_KEY" \
+    --header 'Content-Type: application/json' \
+    --data '{"personalizations": [{"to": [{"email": "<to-email>"}]}],"from": {"email": "<from-email>"},"subject": "Success - Remote Backup on '$(date +'%d-%b-%Y')'","content": [{"type": "text/plain", "value": "Your remote backup on '$(date +'%d-%b-%Y')' was successful. \n The backup is called: '$(hostname)-$(date +'%d-%b-%Y')' "}]}'
+	
+# Prune extra backups
+  borg prune --prefix $(hostname)- --keep-daily=3
+
+else
+curl --request POST \
+  --url https://api.sendgrid.com/v3/mail/send \
+  --header "Authorization: Bearer $SENDGRID_API_KEY" \
+  --header 'Content-Type: application/json' \
+  --data '{"personalizations": [{"to": [{"email": "<to-email>"}]}],"from": {"email": "<from-email>"},"subject": "Failure - Remote Backup on '$(date +'%d-%b-%Y')'","content": [{"type": "text/plain", "value": "Your remote backup on '$(date +'%d-%b-%Y')' failed."}]}'
+fi
